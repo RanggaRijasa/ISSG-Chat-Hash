@@ -1,5 +1,6 @@
 const io = require("socket.io-client");
 const readline = require("readline");
+const crypto = require("crypto");
 
 const socket = io("http://localhost:3000");
 
@@ -13,6 +14,15 @@ let registeredUsername = "";
 let username = "";
 const users = new Map();
 
+let keyPair = crypto.generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+});
+
+const privateKey = keyPair.privateKey;
+const publicKey = keyPair.publicKey;
+
 socket.on("connect", () => {
   console.log("Connected to the server");
 
@@ -21,9 +31,10 @@ socket.on("connect", () => {
     registeredUsername = input;
     console.log(`Welcome, ${username} to the chat`);
 
+    // Send the public key to the server for registration
     socket.emit("registerPublicKey", {
       username,
-      publicKey: "public key",
+      publicKey,
     });
     rl.prompt();
 
@@ -36,7 +47,17 @@ socket.on("connect", () => {
           username = registeredUsername;
           console.log(`Now you are ${username}`);
         } else {
-          socket.emit("message", { username, message });
+          // Sign the message using the user's private key
+          const sign = crypto.createSign("SHA256");
+          sign.update(message);
+          sign.end();
+          const signature = sign.sign(privateKey, "hex");
+
+          socket.emit("message", {
+            username,
+            message,
+            signature,
+          });
         }
       }
       rl.prompt();
@@ -58,11 +79,13 @@ socket.on("newUser", (data) => {
 });
 
 socket.on("message", (data) => {
-  const { username: senderUsername, message: senderMessage } = data;
-  if (senderUsername !== username) {
+  const { username: senderUsername, message: senderMessage, warning } = data;
+  if (warning) {
+    console.log(`Warning: this user is fake`);
+  } else {
     console.log(`${senderUsername}: ${senderMessage}`);
-    rl.prompt();
   }
+  rl.prompt();
 });
 
 socket.on("disconnect", () => {

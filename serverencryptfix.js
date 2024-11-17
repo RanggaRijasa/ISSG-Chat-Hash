@@ -1,5 +1,6 @@
 const http = require("http");
 const socketIo = require("socket.io");
+const NodeRSA = require("node-rsa");
 
 const server = http.createServer();
 const io = socketIo(server);
@@ -20,8 +21,13 @@ io.on("connection", (socket) => {
   });
 
   socket.on("message", (data) => {
-    const { username, message } = data;
-    io.emit("message", { username, message });
+    const { username, target, message, encrypted } = data;
+
+    if (encrypted) {
+      console.log(`Encrypted message from ${username} to ${target}: ${message}`);
+    }
+
+    io.emit("message", { username, target, message, encrypted });
   });
 
   socket.on("disconnect", () => {
